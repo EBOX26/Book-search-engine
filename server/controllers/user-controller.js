@@ -1,73 +1,125 @@
-// import user model
+// Import the User model
 const { User } = require('../models');
-// import sign token function from auth
+// Import the signToken function from the auth utility
 const { signToken } = require('../utils/auth');
 
 module.exports = {
-  // get a single user by either their id or their username
+  // Retrieve a single user by either their id or their username
   async getSingleUser({ user = null, params }, res) {
-    const foundUser = await User.findOne({
-      $or: [{ _id: user ? user._id : params.id }, { username: params.username }],
-    });
+    try {
+      // Find a user based on either id or username
+      const foundUser = await User.findOne({
+        $or: [{ _id: user ? user._id : params.id }, { username: params.username }],
+      });
 
-    if (!foundUser) {
-      return res.status(400).json({ message: 'Cannot find a user with this id!' });
+      // If no user is found, return an error response
+      if (!foundUser) {
+        return res.status(400).json({ message: 'Cannot find a user with this id or username!' });
+      }
+
+      // Return the found user
+      res.json(foundUser);
+    } catch (err) {
+      // Handle errors
+      console.error(err);
+      res.status(500).json({ message: 'Internal server error while fetching user' });
     }
-
-    res.json(foundUser);
   },
-  // create a user, sign a token, and send it back (to client/src/components/SignUpForm.js)
+
+  // Create a new user, sign a token, and send it back
+  // (used in client/src/components/SignUpForm.js)
   async createUser({ body }, res) {
-    const user = await User.create(body);
+    try {
+      // Create a user
+      const user = await User.create(body);
 
-    if (!user) {
-      return res.status(400).json({ message: 'Something is wrong!' });
+      // If user creation fails, return an error response
+      if (!user) {
+        return res.status(400).json({ message: 'Failed to create user' });
+      }
+
+      // Sign a token and send it back along with the user data
+      const token = signToken(user);
+      res.json({ token, user });
+    } catch (err) {
+      // Handle errors
+      console.error(err);
+      res.status(500).json({ message: 'Internal server error during user creation' });
     }
-    const token = signToken(user);
-    res.json({ token, user });
   },
-  // login a user, sign a token, and send it back (to client/src/components/LoginForm.js)
+
+  // Log in a user, sign a token, and send it back
+  // (used in client/src/components/LoginForm.js)
   // {body} is destructured req.body
   async login({ body }, res) {
-    const user = await User.findOne({ $or: [{ username: body.username }, { email: body.email }] });
-    if (!user) {
-      return res.status(400).json({ message: "Can't find this user" });
-    }
-
-    const correctPw = await user.isCorrectPassword(body.password);
-
-    if (!correctPw) {
-      return res.status(400).json({ message: 'Wrong password!' });
-    }
-    const token = signToken(user);
-    res.json({ token, user });
-  },
-  // save a book to a user's `savedBooks` field by adding it to the set (to prevent duplicates)
-  // user comes from `req.user` created in the auth middleware function
-  async saveBook({ user, body }, res) {
-    console.log(user);
     try {
+      // Find a user based on either username or email
+      const user = await User.findOne({ $or: [{ username: body.username }, { email: body.email }] });
+
+      // If no user is found, return an error response
+      if (!user) {
+        return res.status(400).json({ message: "Can't find this user" });
+      }
+
+      // Check if the password is correct
+      const correctPw = await user.isCorrectPassword(body.password);
+
+      // If the password is incorrect, return an error response
+      if (!correctPw) {
+        return res.status(400).json({ message: 'Wrong password!' });
+      }
+
+      // Sign a token and send it back along with the user data
+      const token = signToken(user);
+      res.json({ token, user });
+    } catch (err) {
+      // Handle errors
+      console.error(err);
+      res.status(500).json({ message: 'Internal server error during login' });
+    }
+  },
+
+  // Save a book to a user's `savedBooks` field by adding it to the set (to prevent duplicates)
+  // User comes from `req.user` created in the auth middleware function
+  async saveBook({ user, body }, res) {
+    try {
+      // Update the user by adding the book to the `savedBooks` set
       const updatedUser = await User.findOneAndUpdate(
         { _id: user._id },
         { $addToSet: { savedBooks: body } },
         { new: true, runValidators: true }
       );
+
+      // Return the updated user
       return res.json(updatedUser);
     } catch (err) {
-      console.log(err);
-      return res.status(400).json(err);
+      // Handle errors
+      console.error(err);
+      res.status(400).json(err);
     }
   },
-  // remove a book from `savedBooks`
+
+  // Remove a book from `savedBooks`
   async deleteBook({ user, params }, res) {
-    const updatedUser = await User.findOneAndUpdate(
-      { _id: user._id },
-      { $pull: { savedBooks: { bookId: params.bookId } } },
-      { new: true }
-    );
-    if (!updatedUser) {
-      return res.status(404).json({ message: "Couldn't find user with this id!" });
+    try {
+      // Update the user by pulling the specified bookId from the `savedBooks` array
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: user._id },
+        { $pull: { savedBooks: { bookId: params.bookId } } },
+        { new: true }
+      );
+
+      // If no updated user is found, return an error response
+      if (!updatedUser) {
+        return res.status(404).json({ message: "Couldn't find user with this id!" });
+      }
+
+      // Return the updated user
+      return res.json(updatedUser);
+    } catch (err) {
+      // Handle errors
+      console.error(err);
+      res.status(500).json({ message: 'Internal server error during book deletion' });
     }
-    return res.json(updatedUser);
   },
 };
